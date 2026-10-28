@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Frutificar | Recuperar senha</title>
+<style>body{font:16px system-ui,Arial;background:#f3f7f3;color:#173b29;margin:0;padding:30px 16px}.card{max-width:460px;margin:8vh auto;background:white;border:1px solid #dce7dd;border-radius:18px;padding:30px;box-shadow:0 12px 40px #102c1712}h1{font-size:25px}label{display:block;margin:18px 0 6px;font-weight:650}input,button{width:100%;box-sizing:border-box;padding:13px;border-radius:9px;font:inherit}input{border:1px solid #b9cbbd}button{margin-top:20px;background:#167b3b;border:0;color:white;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.info{font-size:14px;color:#5b6d60}.msg{margin-top:18px;white-space:pre-wrap;font-size:14px}.err{color:#9b2929}.ok{color:#146b37}</style></head><body><main class="card"><h1>Projeto Frutificar</h1><p>Redefinição de senha do acesso institucional.</p><p id="status" class="info">Verificando seu link de recuperação...</p><form id="form" hidden><label for="pass">Nova senha</label><input id="pass" type="password" autocomplete="new-password" minlength="12" required placeholder="Pelo menos 12 caracteres"><label for="confirm">Confirmar nova senha</label><input id="confirm" type="password" autocomplete="new-password" minlength="12" required><button id="save" type="submit">Salvar nova senha</button></form><div id="msg" class="msg" role="status" aria-live="polite"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const URL_SUPABASE='https://evcxwvogtuechcbcafbt.supabase.co';
+const CHAVE_PUBLICA='sb_publishable_4BsHQ-0P052erZKAxCTOPA_WiGrwxO2';
+const statusEl=document.getElementById('status'), form=document.getElementById('form'), msg=document.getElementById('msg');
+function mensagem(texto,erro=false){msg.textContent=texto;msg.className='msg '+(erro?'err':'ok')}
+(async()=>{
+ try{
+  if(!window.supabase?.createClient) throw new Error('Não foi possível carregar a biblioteca de autenticação. Verifique sua conexão.');
+  const client=window.supabase.createClient(URL_SUPABASE,CHAVE_PUBLICA,{auth:{detectSessionInUrl:true,persistSession:false,autoRefreshToken:false}});
+  const params=new URLSearchParams(location.hash.slice(1));
+  const query=new URLSearchParams(location.search);
+  if(params.get('error')||query.get('error')) throw new Error(params.get('error_description')||query.get('error_description')||'Link inválido.');
+  let habilitado=false;
+  function liberar(){habilitado=true;form.hidden=false;statusEl.textContent='Link verificado. Escolha uma nova senha.';history.replaceState(null,'',location.pathname)}
+  client.auth.onAuthStateChange((event)=>{if(event==='PASSWORD_RECOVERY') liberar()});
+  const code=query.get('code');
+  if(code){const {error}=await client.auth.exchangeCodeForSession(code);if(error)throw error;liberar()}
+  else if(params.get('type')==='recovery'&&params.get('access_token')&&params.get('refresh_token')){
+    const {error}=await client.auth.setSession({access_token:params.get('access_token'),refresh_token:params.get('refresh_token')});if(error)throw error;liberar();
+  }
+  else {const {data}=await client.auth.getSession();if(data.session&&params.get('type')==='recovery')liberar()}
+  if(!habilitado){statusEl.textContent='Não foi possível validar o link.';mensagem('Solicite um novo e-mail de recuperação no Supabase. Abra esta página somente pelo link recebido.',true)}
+  form.addEventListener('submit',async e=>{
+    e.preventDefault();const senha=document.getElementById('pass').value;
+    if(senha!==document.getElementById('confirm').value){mensagem('As senhas não coincidem.',true);return}
+    if(senha.length<12){mensagem('Use pelo menos 12 caracteres.',true);return}
+    const botao=document.getElementById('save');botao.disabled=true;mensagem('Salvando...');
+    try{const {error}=await client.auth.updateUser({password:senha});if(error)throw error;form.hidden=true;statusEl.textContent='Senha atualizada com sucesso.';mensagem('Agora abra o Frutificar e entre com sua nova senha.');await client.auth.signOut()}
+    catch(err){mensagem(err.message||'Não foi possível alterar a senha.',true)}finally{botao.disabled=false}
+  });
+ }catch(err){statusEl.textContent='Não foi possível validar o link.';mensagem(err.message||'Erro na recuperação.',true)}
+})();
+</script></body></html>
